@@ -772,11 +772,17 @@ Token creation is asynchronous. Poll `order get` with the returned `order_id` if
 
 ## Rate Limit Handling
 
-All business routes are protected by GMGN's leaky-bucket limiter. Current production behavior is:
+All business routes are protected by GMGN's leaky-bucket limiter. The rate/capacity is not a single fixed value — it is resolved per request from the API Key's paid-plan tier (auto-detected server-side, not configured by the caller):
 
-- `rate=10`, `capacity=10`
+| Tier | rate / capacity |
+|------|------------------|
+| free | 5 / 5 |
+| plus | 20 / 20 |
+| pro | 50 / 50 |
+
 - every limited `429` response includes `X-RateLimit-Reset`
 - `X-RateLimit-Reset` is a Unix timestamp in seconds, representing when the current cooldown is expected to end
+- the `429` response body also includes `upgrade_url` and `upgrade_message` pointing to the paid-plan page
 
 CLI behavior:
 
@@ -786,8 +792,10 @@ CLI behavior:
 
 Important notes:
 
-- `RATE_LIMIT_EXCEEDED` and `RATE_LIMIT_BANNED` are request-frequency limits. Continuing to send requests during the cooldown can extend the ban by 5 seconds each time, up to 5 minutes.
+- `RATE_LIMIT_EXCEEDED` and `RATE_LIMIT_BANNED` are request-frequency limits. Continuing to send requests during the cooldown can extend the ban by 5 seconds each time, up to 5 minutes (300s max).
 - `ERROR_RATE_LIMIT_BLOCKED` is an error-count block on `POST /v1/trade/swap`. It is triggered by repeatedly hitting the same business error and should be treated as "fix the request first, then retry after reset".
+- If `429`s keep recurring, the API Key is likely on the `free` tier. The user can manually upgrade their plan for a higher rate limit — this requires the user to actively upgrade, it does not happen automatically:
+  https://gmgn.ai/ai?chain=bsc&tab=paid_plans
 
 ---
 

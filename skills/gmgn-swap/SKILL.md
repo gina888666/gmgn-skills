@@ -80,7 +80,15 @@ Currency tokens are the base/native assets of each chain. They are used to buy o
 
 ## Rate Limit Handling
 
-All swap-related routes used by this skill go through GMGN's leaky-bucket limiter with `rate=20` and `capacity=20`. Sustained throughput is roughly `20 ÷ weight` requests/second, and the max burst is roughly `floor(20 ÷ weight)` when the bucket is full.
+All swap-related routes used by this skill go through GMGN's leaky-bucket limiter. The rate/capacity is resolved automatically from the API Key's paid-plan tier — it is not something the CLI or caller configures:
+
+| Tier | rate / capacity |
+|------|------------------|
+| free | 5 / 5 |
+| plus | 20 / 20 |
+| pro | 50 / 50 |
+
+Sustained throughput ≈ `tier rate ÷ weight` requests/second; max burst ≈ `floor(tier capacity ÷ weight)` when the bucket is full.
 
 | Command | Route | Weight |
 |---------|-------|--------|
@@ -99,8 +107,10 @@ When a request returns `429`:
 - If the response body contains `reset_at` (e.g., `{"code":429,"error":"RATE_LIMIT_BANNED","message":"...","reset_at":1775184222}`), extract `reset_at` — it is the Unix timestamp when the ban lifts (typically 5 minutes). Convert to local time and tell the user exactly when they can retry.
 - `swap` is a real transaction: never loop or auto-submit repeated swap attempts after a `429`. Wait until the reset time, then ask for confirmation again before retrying.
 - The CLI may wait and retry once automatically for short cooldowns on read-only commands such as `order quote` and `order get`. If it still fails, stop and tell the user the exact retry time instead of sending more requests.
-- For `RATE_LIMIT_EXCEEDED` or `RATE_LIMIT_BANNED`, repeated requests during the cooldown can extend the ban by 5 seconds each time, up to 5 minutes.
+- For `RATE_LIMIT_EXCEEDED` or `RATE_LIMIT_BANNED`, repeated requests during the cooldown can extend the ban by 5 seconds each time, up to 5 minutes (300s max).
 - `POST /v1/trade/swap` also has an error-count limiter. Repeatedly triggering the same business error, especially `40003701` (insufficient token balance), can return `ERROR_RATE_LIMIT_BLOCKED`. When this happens, do not retry until the reset time and fix the underlying request first.
+- If `429`s keep recurring, the API Key is likely on the `free` tier. Tell the user they can manually upgrade their plan for a higher rate limit — this requires the user to actively upgrade, it does not happen automatically:
+  https://gmgn.ai/ai?chain=bsc&tab=paid_plans
 
 **First-time setup** (if credentials are not configured):
 

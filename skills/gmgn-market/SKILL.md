@@ -61,7 +61,15 @@ Use the `gmgn-cli` tool to query K-line data for a token, browse trending tokens
 
 ## Rate Limit Handling
 
-All market routes used by this skill go through GMGN's leaky-bucket limiter with `rate=20` and `capacity=20`. Sustained throughput is roughly `20 ÷ weight` requests/second, and the max burst is roughly `floor(20 ÷ weight)` when the bucket is full.
+All market routes used by this skill go through GMGN's leaky-bucket limiter. The rate/capacity is resolved automatically from the API Key's paid-plan tier — it is not something the CLI or caller configures:
+
+| Tier | rate / capacity |
+|------|------------------|
+| free | 5 / 5 |
+| plus | 20 / 20 |
+| pro | 50 / 50 |
+
+Sustained throughput ≈ `tier rate ÷ weight` requests/second; max burst ≈ `floor(tier capacity ÷ weight)` when the bucket is full.
 
 | Command | Route | Weight |
 |---------|-------|--------|
@@ -75,7 +83,9 @@ When a request returns `429`:
 - Read `X-RateLimit-Reset` from the response headers. It is a Unix timestamp in seconds that marks when the limit is expected to reset.
 - If the response body contains `reset_at` (e.g., `{"code":429,"error":"RATE_LIMIT_BANNED","message":"...","reset_at":1775184222}`), extract `reset_at` — it is the Unix timestamp when the ban lifts (typically 5 minutes). Convert to local time and tell the user exactly when they can retry.
 - The CLI may wait and retry once automatically when the remaining cooldown is short. If it still fails, stop and tell the user the exact retry time instead of sending more requests.
-- For `RATE_LIMIT_EXCEEDED` or `RATE_LIMIT_BANNED`, repeated requests during the cooldown can extend the ban by 5 seconds each time, up to 5 minutes. Do not spam retries.
+- For `RATE_LIMIT_EXCEEDED` or `RATE_LIMIT_BANNED`, repeated requests during the cooldown can extend the ban by 5 seconds each time, up to 5 minutes (300s max). Do not spam retries.
+- If `429`s keep recurring, the API Key is likely on the `free` tier. Tell the user they can manually upgrade their plan for a higher rate limit — this requires the user to actively upgrade, it does not happen automatically:
+  https://gmgn.ai/ai?chain=bsc&tab=paid_plans
 
 **First-time setup** (if `GMGN_API_KEY` is not configured):
 

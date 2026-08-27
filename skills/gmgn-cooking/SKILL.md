@@ -74,7 +74,15 @@ If a local `.env` exists but lacks `GMGN_API_KEY` / `GMGN_PRIVATE_KEY`, either a
 
 ## Rate Limit Handling
 
-All cooking routes go through GMGN's leaky-bucket limiter with `rate=20` and `capacity=20`. Sustained throughput is roughly `20 ÷ weight` requests/second.
+All cooking routes go through GMGN's leaky-bucket limiter. The rate/capacity is resolved automatically from the API Key's paid-plan tier — it is not something the CLI or caller configures:
+
+| Tier | rate / capacity |
+|------|------------------|
+| free | 5 / 5 |
+| plus | 20 / 20 |
+| pro | 50 / 50 |
+
+Sustained throughput ≈ `tier rate ÷ weight` requests/second.
 
 | Command | Weight |
 |---------|--------|
@@ -86,7 +94,9 @@ When a request returns `429`:
 - Read `X-RateLimit-Reset` from the response headers — Unix timestamp for when the limit resets.
 - If the response body contains `reset_at` (e.g., `{"code":429,"error":"RATE_LIMIT_BANNED","message":"...","reset_at":1775184222}`), extract `reset_at` — it is the Unix timestamp when the ban lifts (typically 5 minutes). Convert to local time and tell the user exactly when they can retry.
 - `cooking create` is a real transaction: **never loop or auto-resubmit** after a `429`. Wait until the reset time, then ask for confirmation again before retrying.
-- For `RATE_LIMIT_EXCEEDED` or `RATE_LIMIT_BANNED`, repeated requests during cooldown extend the ban by 5 seconds each time, up to 5 minutes.
+- For `RATE_LIMIT_EXCEEDED` or `RATE_LIMIT_BANNED`, repeated requests during cooldown extend the ban by 5 seconds each time, up to 5 minutes (300s max).
+- If `429`s keep recurring, the API Key is likely on the `free` tier. Tell the user they can manually upgrade their plan for a higher rate limit — this requires the user to actively upgrade, it does not happen automatically:
+  https://gmgn.ai/ai?chain=bsc&tab=paid_plans
 
 **First-time setup** (if credentials are not configured):
 
